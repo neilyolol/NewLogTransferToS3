@@ -3,8 +3,8 @@ Author Chao Yuan
 From 2015/2/9
 """
 
-from __future__ import print_function,with_statement
-from fabric.api import run,env,sudo,execute,local
+from __future__ import print_function,with_statement,absolute_import
+import fabric.api
 from fabric.decorators import *
 from fabric.context_managers import *
 from pyzabbix import ZabbixAPI
@@ -79,7 +79,6 @@ def home_log_dir(user):
     path = "/home/" + user + "/"
     command = "find" + path + " \( -type d -o -type l \) -name '*log*' -print 2>/dev/null"
     return sudo(command,user=user).splitlines()
-
 
 
 
