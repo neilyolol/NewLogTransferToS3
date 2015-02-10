@@ -127,6 +127,23 @@ def all_log_directories():
     all_log_dir = list(set(all_log_dir))
 
 
+def upload_process(s3_upload_path):
+    """
+
+    :rtype : object
+    """
+    filename_command = " find ./ -maxdepth 1 -type f -name '*.gz' -exec ls -al  {} \; |awk '{print $9}'|awk -F/ '{print $2}' "
+    file_to_sent = [run(filename_command).splitlines]
+    for i in range(len(file_to_sent)):
+        d = {file_to_sent[i]: run("ls -al " + file_to_sent[i] + "|awk '{print $5}' ")}
+        run('s3cmd put ' + file_to_sent[i] + ' ' + s3_upload_path)
+        file_size = run("s3cmd ls " + s3_upload_path + file_to_sent[i] + "|awk '{print $3}'")
+        if str(file_size) == str(d[file_to_sent[i]]):
+            run('rm -f ' + file_to_sent[i])
+        else:
+            print(file_to_sent[i] + " upload failed . Please check !")
+
+
 def upload_to_s3():
     s3_prefix_oregon = 's3://noc-archive-oregon/logs/'
     s3_prefix_virginia = 's3://noc-archive-east/logs/'
@@ -135,10 +152,48 @@ def upload_to_s3():
     cluster_name = local('echo ' + env.host_string + ''' |awk -F- '{print $2}' ''', capture=True)
     all_log_directories()
     for each_log_dir in all_log_dir:
-        
+        if domain_string == 'ec1':
+            with cd(each_log_dir):
+                s3_upload_path = s3_prefix_virginia + cluster_name + '/' + host_string + each_log_dir
+                irc_mark('Logtransfer', 'Start upload logs from ' + host_string)
+                upload_process(s3_upload_path)
+        elif domain_string == 'ec2':
+            with cd(each_log_dir):
+                s3_upload_path = s3_prefix_oregon + cluster_name + '/' + host_string + each_log_dir
+                upload_process(s3_upload_path)
+                irc_mark('Logtransfer', 'Start upload logs from ' + host_string)
 
-    irc_mark('Logtransfer', 'Start upload logs ')
+def job_4_config(config):
+    for each_cluster in config.options():
+        hosts = []
+        hosts.extend(get_cluster_instances_oregon())
+        hosts.extend(get_cluster_instances_virginia())
+        if env.hosts:
+            execute(upload_to_s3())
 
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='Transfer all zipped log file from TeleNav AWS Virginia and Oregon servers to S3')
+    parser.add_argument(
+        'hosts',
+        type=str,
+        nargs='*',
+        help='Hosts on which logs need to be transferred. '
+    )
+    parser.add_argument(
+        '-f',
+        '--config-file',
+        nargs='?',
+        dest='config_file',
+        type=argparse.FileType('r'),
+    )
+    args = parser.parse_args()
+
+
+    if args.config_file:
+        config = ConfigParser.ConfigParser(allow_no_value=True)
+        config.readfp(args.config_file)
+        job_4_config(config)
+        irc_mark('LogTransfer','[Completed]')
 
 
 
